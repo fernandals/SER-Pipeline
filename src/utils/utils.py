@@ -1,5 +1,4 @@
 import torch
-
 from utils.dataloader import read_metadata
 
 
@@ -28,8 +27,3 @@ def get_classes_weights(config) -> torch.Tensor:
 
     weights = [total / counts.get(c, total) for c in range(num_classes)]
     return torch.tensor(weights, dtype=torch.float)
-
-
-def id2label_from_config(config) -> dict:
-    """Invert ``config.data.label2id`` into an {id: label} mapping."""
-    return {int(v): k for k, v in dict(config.data.label2id).items()}

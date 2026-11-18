@@ -1,9 +1,9 @@
 import os
 from typing import List, Optional, Tuple
 
+import pandas as pd
 import torch
 import torchaudio
-import pandas as pd
 from torch.utils.data import Dataset
 
 
@@ -126,36 +126,18 @@ def read_metadata(metadata_path: str, target_column: str, label2id: dict) -> pd.
     return df
 
 
+def build_dataset(settings, data) -> AudioDataset:
+    metadata = read_metadata(settings.metadata_path, settings.target_column, dict(data.label2id))
+    return AudioDataset(
+        data=metadata,
+        filename_column=settings.filename_column,
+        target_column="target",
+        audio_base_dir=settings.audio_base_dir,
+        target_sr=data.target_sr,
+        max_duration=data.get("max_duration"),
+    )
+
+
 def build_datasets(config) -> Tuple[AudioDataset, AudioDataset]:
     """Build the train and validation datasets from a config."""
-    label2id = dict(config.data.label2id)
-
-    train_df = read_metadata(
-        config.datasets.train.metadata_path,
-        config.datasets.train.target_column,
-        label2id,
-    )
-    val_df = read_metadata(
-        config.datasets.val.metadata_path,
-        config.datasets.val.target_column,
-        label2id,
-    )
-
-    train_dataset = AudioDataset(
-        data=train_df,
-        filename_column=config.datasets.train.filename_column,
-        target_column="target",
-        audio_base_dir=config.datasets.train.audio_base_dir,
-        target_sr=config.data.target_sr,
-        max_duration=config.data.get("max_duration", None),
-    )
-    val_dataset = AudioDataset(
-        data=val_df,
-        filename_column=config.datasets.val.filename_column,
-        target_column="target",
-        audio_base_dir=config.datasets.val.audio_base_dir,
-        target_sr=config.data.target_sr,
-        max_duration=config.data.get("max_duration", None),
-    )
-
-    return train_dataset, val_dataset
+    return build_dataset(config.datasets.train, config.data), build_dataset(config.datasets.val, config.data)
