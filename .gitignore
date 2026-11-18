@@ -12,6 +12,7 @@ results/
 
 # Local data (generated / downloaded)
 data/audio/
+/data/msp_podcast/
 data/*.csv
 data/**/*.csv
 
