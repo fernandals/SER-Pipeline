@@ -1,32 +1,30 @@
 import numpy as np
-import torch
 import pytorch_lightning as pl
+import torch
+from models.factory import create_ser_model
 from omegaconf import DictConfig
-from torch.optim import Adam, AdamW
-from torch.utils.data import DataLoader
-from transformers import AutoFeatureExtractor
 from sklearn.metrics import (
     accuracy_score,
+    confusion_matrix,
     f1_score,
     precision_score,
     recall_score,
-    confusion_matrix,
 )
-
-from models.factory import create_ser_model
-from utils.schedulers import CosineWarmupLR
+from torch.optim import Adam, AdamW
+from torch.utils.data import DataLoader
+from transformers import AutoFeatureExtractor
 from utils.dataloader import AudioCollate, build_datasets
+from utils.schedulers import CosineWarmupLR
 from utils.utils import get_classes_weights
 
 
 class PLWrapper(pl.LightningModule):
     """LightningModule tying together the model, data, loss and metrics."""
 
-    def __init__(self, config: DictConfig, inference_mode: bool = False):
+    def __init__(self, config: DictConfig):
         super().__init__()
         self.save_hyperparameters(config)
         self.config = config
-        self.inference_mode = inference_mode
 
         self.model = create_ser_model(
             model_type=config.model.model_type,

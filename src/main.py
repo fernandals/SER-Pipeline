@@ -1,81 +1,43 @@
-import os
-import sys
 import argparse
-from pprint import pprint
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import os
+from pathlib import Path
 
 import pytorch_lightning as pl
+from models.pl_wrapper import PLWrapper
 from omegaconf import OmegaConf
-from pytorch_lightning import seed_everything
-from pytorch_lightning.loggers import CSVLogger, WandbLogger
 from pytorch_lightning.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
     ModelCheckpoint,
 )
+from pytorch_lightning.loggers import CSVLogger
 
-from models.pl_wrapper import PLWrapper
-
-# Repo root (parent of src/) so outputs land there regardless of the cwd.
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = Path(__file__).resolve().parent.parent
 
 
-def build_logger(config):
-    """CSV logger by default; W&B when ``use_wandb`` is set in the config."""
-    if config.get("use_wandb", False):
-        return WandbLogger(
-            project=config.get("wandb_project", "SER-Audio"),
-            entity=config.get("wandb_entity", None),
-            name=config.title,
-            tags=list(config.get("tags", [])),
-            config=OmegaConf.to_container(config, resolve=True),
-        )
-    return CSVLogger(save_dir=os.path.join(REPO_ROOT, "lightning_logs"), name=config.title)
+def main():
+    parser = argparse.ArgumentParser(description="Train WavLM on MSP-Podcast.")
+    parser.add_argument("-c", "--config", type=Path, default=ROOT / "config/audio-wavlm-msp.yaml")
+    config = OmegaConf.load(parser.parse_args().config)
 
+    for dataset in config.datasets.values():
+        dataset.metadata_path = str(ROOT / dataset.metadata_path)
+        dataset.audio_base_dir = str(ROOT / dataset.audio_base_dir)
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--config_path", required=True, type=str,
-                        help="YAML file with configurations")
-    parser.add_argument("-g", "--gpu", default=0, type=int,
-                        help="GPU index to train on")
-    parser.add_argument("-ck", "--checkpoint_dir", default=None, type=str,
-                        help="where to save checkpoints (default: <repo>/checkpoints)")
-    args = parser.parse_args()
-
-    config = OmegaConf.load(args.config_path)
-    seed_everything(config.get("seed", 42), workers=True)
-
-    logger = build_logger(config)
-
-    checkpoint_dir = args.checkpoint_dir or os.path.join(REPO_ROOT, "checkpoints")
-    ckpt_kwargs = OmegaConf.to_container(config.model_checkpoint, resolve=True)
-    ckpt_kwargs.pop("dirpath", None)
-    ckpt_kwargs["dirpath"] = os.path.join(checkpoint_dir, config.title)
-    print(f"Checkpoints -> {ckpt_kwargs['dirpath']}")
+    # Set CUBLAS_WORKSPACE_CONFIG for deterministic/reproducible CUDA results
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    pl.seed_everything(config.seed, workers=True)
+    checkpoint_dir = ROOT / config.checkpoint_dir / config.title
     callbacks = [
-        ModelCheckpoint(**ckpt_kwargs),
+        ModelCheckpoint(dirpath=checkpoint_dir, **config.model_checkpoint),
         LearningRateMonitor(logging_interval="step"),
     ]
+    if config.get("early_stopping"):
+        callbacks.append(EarlyStopping(**config.early_stopping))
 
-    # Optional early stopping: add an `early_stopping:` block to the config.
-    if config.get("early_stopping", None):
-        es_kwargs = OmegaConf.to_container(config.early_stopping, resolve=True)
-        callbacks.append(EarlyStopping(**es_kwargs))
-        print(f"Early stopping -> monitor={es_kwargs.get('monitor')} "
-              f"patience={es_kwargs.get('patience')}")
-
-    model = PLWrapper(config)
-    pprint(model)
-
-    trainer = pl.Trainer(
-        **config.trainer,
-        logger=logger,
-        callbacks=callbacks,
-        devices=[args.gpu],
-    )
-    trainer.fit(model)
+    logger = CSVLogger(ROOT / config.log_dir, name=config.title)
+    trainer = pl.Trainer(callbacks=callbacks, logger=logger, **config.trainer)
+    trainer.fit(PLWrapper(config))
 
 
 if __name__ == "__main__":

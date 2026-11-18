@@ -6,7 +6,6 @@ import torch.nn.functional as F
 import torch.nn.init as init
 from transformers import AutoConfig, AutoModel
 
-
 ACTIVATIONS_FUNCS = {
     "relu": nn.ReLU(),
     "gelu": nn.GELU(),
@@ -173,6 +172,12 @@ class AudioSERModel(nn.Module):
             dropout=mlp_dropout,
             activation_func=mlp_activation_func,
         )
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.freeze_backbone:
+            self.backbone.eval()
+        return self
 
     def _feature_attention_mask(
         self, attention_mask: torch.Tensor, feat_len: int
